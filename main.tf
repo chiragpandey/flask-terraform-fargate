@@ -53,6 +53,32 @@ resource "aws_subnet" "flask-tf-fargate-publicsubnet2" {
   }
 }
 
+#--------- Create 2 Private Subnets --------#
+
+resource "aws_subnet" "flask-tf-fargate-privatesubnet1" {
+  vpc_id                  = aws_vpc.flask-tf-fargate-vpc.id
+  cidr_block              = "10.46.20.0/24"
+  availability_zone       = "us-east-1a"
+  map_public_ip_on_launch = false # this is a private subnet
+
+  tags = {
+    Name = "flask-tf-fargate-private-subnet-1"
+    Type = "private"
+  }
+}
+
+resource "aws_subnet" "flask-tf-fargate-privatesubnet2" {
+  vpc_id                  = aws_vpc.flask-tf-fargate-vpc.id
+  cidr_block              = "10.46.21.0/24"
+  availability_zone       = "us-east-1b"
+  map_public_ip_on_launch = false # this is a private subnet
+
+  tags = {
+    Name = "flask-tf-fargate-private-subnet-2"
+    Type = "private"
+  }
+}
+
 #-------- Create Public Route Table --------#
 
 resource "aws_route_table" "flask-tf-fargate-publicRT" {
