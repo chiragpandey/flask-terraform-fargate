@@ -53,6 +53,33 @@ resource "aws_subnet" "flask-tf-fargate-publicsubnet2" {
   }
 }
 
+#-------- Create Route Table for pubic subnets --------#
+
+resource "aws_route_table" "flask-tf-fargate-publicRT" {
+  vpc_id = aws_vpc.flask-tf-fargate-vpc.id
+
+  route { # defining route to IGW for public access
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.flask-tf-fargate-igw.id
+  }
+
+  tags = {
+    Name = "flask-tf-fargate-public-rt"
+  }
+}
+
+#-------- Associate Route Table with Public Subnets --------#
+
+resource "aws_route_table_association" "flask-tf-fargate-publicsubnet1-association1" {
+  subnet_id      = aws_subnet.flask-tf-fargate-publicsubnet1.id
+  route_table_id = aws_route_table.flask-tf-fargate-publicRT.id
+}
+
+resource "aws_route_table_association" "flask-tf-fargate-publicsubnet2-association2" {
+  subnet_id      = aws_subnet.flask-tf-fargate-publicsubnet2.id
+  route_table_id = aws_route_table.flask-tf-fargate-publicRT.id
+}
+
 #--------- Create 2 Private Subnets --------#
 
 resource "aws_subnet" "flask-tf-fargate-privatesubnet1" {
@@ -79,31 +106,27 @@ resource "aws_subnet" "flask-tf-fargate-privatesubnet2" {
   }
 }
 
-#-------- Create Public Route Table --------#
+#--------- Create route table for private subnets --------#
 
-resource "aws_route_table" "flask-tf-fargate-publicRT" {
+resource "aws_route_table" "flask-tf-fargate-privateRT" {
   vpc_id = aws_vpc.flask-tf-fargate-vpc.id
 
-  route { # defining route to IGW for public access
-    cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.flask-tf-fargate-igw.id
-  }
-
   tags = {
-    Name = "flask-tf-fargate-public-rt"
+    Name = "flask-tf-fargate-private-rt"
   }
+  
 }
 
-#-------- Associate Route Table with Subnets --------#
+#-------- Associate route table with private subnets --------#
 
-resource "aws_route_table_association" "flask-tf-fargate-publicsubnet1-association1" {
-  subnet_id      = aws_subnet.flask-tf-fargate-publicsubnet1.id
-  route_table_id = aws_route_table.flask-tf-fargate-publicRT.id
+resource "aws_route_table_association" "flask-tf-fargate-privatesubnet1-association1" {
+  subnet_id      = aws_subnet.flask-tf-fargate-privatesubnet1.id
+  route_table_id = aws_route_table.flask-tf-fargate-privateRT.id
 }
 
-resource "aws_route_table_association" "flask-tf-fargate-publicsubnet2-association2" {
-  subnet_id      = aws_subnet.flask-tf-fargate-publicsubnet2.id
-  route_table_id = aws_route_table.flask-tf-fargate-publicRT.id
+resource "aws_route_table_association" "flask-tf-fargate-privatesubnet2-association2" {
+  subnet_id      = aws_subnet.flask-tf-fargate-privatesubnet2.id
+  route_table_id = aws_route_table.flask-tf-fargate-privateRT.id
 }
 
 #--------- Create a Security Group --------#
