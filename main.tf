@@ -1,5 +1,6 @@
 provider "aws" {
-  region = "us-east-1"
+  region                   = "us-east-1"
+  shared_credentials_files = ["~/.aws/credentials"] # specify the path to your AWS credentials file
 }
 
 # The label of the provider block corresponds to the name of the provider in the required_providers list in your terraform block.
@@ -58,7 +59,7 @@ resource "aws_subnet" "flask-tf-fargate-publicsubnet2" {
 resource "aws_route_table" "flask-tf-fargate-publicRT" {
   vpc_id = aws_vpc.flask-tf-fargate-vpc.id
 
-  route { # defining route to IGW for public access
+  route { # defining route to IGW for public access. It allows the public traffic to come in and out of the VPC
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.flask-tf-fargate-igw.id
   }
@@ -69,6 +70,7 @@ resource "aws_route_table" "flask-tf-fargate-publicRT" {
 }
 
 #-------- Associate Route Table with Public Subnets --------#
+# Assosiate public subnet with public route table
 
 resource "aws_route_table_association" "flask-tf-fargate-publicsubnet1-association1" {
   subnet_id      = aws_subnet.flask-tf-fargate-publicsubnet1.id
@@ -114,7 +116,7 @@ resource "aws_route_table" "flask-tf-fargate-privateRT" {
   tags = {
     Name = "flask-tf-fargate-private-rt"
   }
-  
+
 }
 
 #-------- Associate route table with private subnets --------#
@@ -164,6 +166,117 @@ resource "aws_security_group" "flask-tf-fargate-sg" {
     Name = "flask-tf-fargate-sg"
   }
 }
+
+#--------- Create Target Group for ELB --------#
+
+resource "aws_lb_target_group" "CustomTG" {
+  name        = "flask-tf-fargate-tg"
+  port        = 80
+  protocol    = "HTTP"
+  vpc_id      = aws_vpc.flask-tf-fargate-vpc.id
+  target_type = "ip"
+
+  health_check {
+    healthy_threshold   = "3" # number of consecutive successful health checks before considering the target healthy
+    interval            = "30"
+    protocol            = "HTTP"
+    matcher             = "200"
+    timeout             = "3"
+    path                = "/"
+    unhealthy_threshold = "2" # number of consecutive failed health checks before considering the target unhealthy
+  }
+
+  tags = {
+    Name = "flask-tf-fargate-tg"
+  }
+}
+
+#--------- Create Security Group for ELB --------#
+
+resource "aws_security_group" "elb_SG" {
+  name        = "flask-tf-fargate-elb-sg"
+  description = "Security Group for ELB"
+  vpc_id      = aws_vpc.flask-tf-fargate-vpc.id
+
+  ingress {
+    description = "Allow inbound HTTP from anywhere"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  ingress {
+    description = "Allow inbound HTTP from anywhere"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  egress {
+    description = "Allow all outbound traffic"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "flask-tf-fargate-elb-security-group"
+  }
+}
+
+#--------- Fetch subnet IDs dynamically --------#
+
+data "aws_subnets" "GetSubnets" {
+  depends_on = [aws_subnet.flask-tf-fargate-publicsubnet1, aws_subnet.flask-tf-fargate-publicsubnet2] # Ensure subnets are created before fetching
+  filter {
+    name   = "tag:Type"
+    values = ["public"]
+  }
+
+  filter {
+    name   = "vpc-id"
+    values = [aws_vpc.flask-tf-fargate-vpc.id]
+  }
+}
+
+#---------------Create LB instance ---------------#
+
+resource "aws_alb" "CustomELB" {
+  name            = "flask-tf-fargate-elb"
+  depends_on      = [aws_subnet.flask-tf-fargate-publicsubnet1, aws_subnet.flask-tf-fargate-publicsubnet2]
+  internal        = false
+  security_groups = [aws_security_group.elb_SG.id]
+  subnets         = data.aws_subnets.GetSubnets.ids
+  tags = {
+    Name = "flask-tf-fargate-elb"
+  }
+}
+
+#--------- Create Listener for ELB --------#
+
+resource "aws_alb_listener" "CustomELBListener" {
+  load_balancer_arn = aws_alb.CustomELB.arn
+  port              = "80"
+  protocol          = "HTTP"
+
+  default_action {
+    type = "forward"
+    forward {
+      target_group {
+        arn = aws_lb_target_group.CustomTG.arn
+      }
+      stickiness { # Enable stickiness for session persistence
+        enabled  = true
+        duration = 28800
+      }
+    }
+  }
+}
+
+# Terraform data sources to automatically fetch the latest Ubuntu AMI
 
 # data "aws_ami" "ubuntu" {
 #   most_recent = true
