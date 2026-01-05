@@ -233,7 +233,7 @@ data "aws_subnets" "GetSubnets" {
   depends_on = [aws_subnet.flask-tf-fargate-publicsubnet1, aws_subnet.flask-tf-fargate-publicsubnet2] # Ensure subnets are created before fetching
   filter {
     name   = "tag:Type"
-    values = ["public"]
+    values = ["public"] # case sensitive
   }
 
   filter {
@@ -275,6 +275,45 @@ resource "aws_alb_listener" "CustomELBListener" {
     }
   }
 }
+
+#--------- Set up CloudWatch Log Group and log streamf or Fargate --------#
+resource "aws_cloudwatch_log_group" "flask-tf-fargate-log-group" {
+  name              = "/ecs/flask-tf-fargate-log-group"
+  retention_in_days = 7 # Retain logs for 7 days
+
+  tags = {
+    Name = "flask-tf-fargate-log-group"
+  }
+}
+
+#--------- Create Log Stream --------#
+resource "aws_cloudwatch_logstream" "flask-tf-fargate-log-stream" {
+  name           = "flask-tf-fargate-log-stream"
+  log_group_name = aws_cloudwatch_log_group.flask-tf-fargate-log-group.name
+}
+
+#--------- Create an ECR repository to store Docker images instead of dockerhub--------#
+resource "aws_ecr_repository" "flask-tf-fargate-ecr-repository" {
+  name = "flask-tf-fargate-ecr-repository"
+  image_tag_mutability = "MUTABLE"
+  force_delete = true
+}
+
+#--------- Docker build and push to ECR can be handled outside of Terraform --------#
+resource "null_resource" "docker_build_push" { # null resource will run local-exec provisioner on our local machine
+  depends_on = [ aws_ecr_repository.flask-tf-fargate-ecr-repository ]
+  provisioner "local-exec" {
+    interpreter = [ "bash", "-c"]
+    command = <<-EOT
+      $(aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ${aws_ecr_repository.flask-tf-fargate-ecr-repository.repository_url})
+      docker build -t flask-tf-fargate-python-app .
+      docker tag flask-tf-fargate-python-app:latest ${aws_ecr_repository.flask-tf-fargate-ecr-repository.repository_url}:latest
+      docker push ${aws_ecr_repository.flask-tf-fargate-ecr-repository.repository_url}:latest
+    EOT
+  }
+}
+
+
 
 # Terraform data sources to automatically fetch the latest Ubuntu AMI
 
